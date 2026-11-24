@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    New_Job_2026_11_24_07_56_27:
+      name: New Job 2026-11-24 07:56:27
+      tasks:
+        - task_key: process_payments
+          notebook_task:
+            notebook_path: /Workspace/Users/maroslaw202@gmail.com/payments_exam
+            source: WORKSPACE
+          min_retry_interval_millis: 900000
+          disable_auto_optimization: true
+          timeout_seconds: 900
+      queue:
+        enabled: true
+      parameters:
+        - name: file_path
+          default: abfss://bronze@marekdelearning01.dfs.core.windows.net/payments_exam/
+      performance_target: STANDARD
