@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "value": "REPLACE_WITH_ADF_NAME"
+    },
+    "adlsUrl": {
+      "value": "https://REPLACE_WITH_STORAGE_ACCOUNT.dfs.core.windows.net/"
+    },
+    "databricksDomain": {
+      "value": "https://adb-REPLACE_WITH_WORKSPACE_ID.0.azuredatabricks.net"
+    },
+    "databricksWorkspaceResourceId": {
+      "value": "/subscriptions/REPLACE_WITH_SUBSCRIPTION_ID/resourceGroups/REPLACE_WITH_RESOURCE_GROUP/providers/Microsoft.Databricks/workspaces/REPLACE_WITH_WORKSPACE_NAME"
+    },
+    "databricksJobId": {
+      "value": "REPLACE_WITH_JOB_ID"
+    }
+  }
+}

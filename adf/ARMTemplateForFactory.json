@@ -1,0 +1,288 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the existing or target Azure Data Factory."
+      }
+    },
+    "adlsUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "ADLS Gen2 DFS endpoint."
+      }
+    },
+    "databricksDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure Databricks workspace URL."
+      }
+    },
+    "databricksWorkspaceResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure Resource Manager ID of the Databricks workspace."
+      }
+    },
+    "databricksJobId": {
+      "type": "string",
+      "metadata": {
+        "description": "ID of the existing Databricks Job; the original Job was removed with the workspace."
+      }
+    }
+  },
+  "variables": {
+    "factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/ls_adls_payments_exam')]",
+      "type": "Microsoft.DataFactory/factories/linkedServices",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "annotations": [],
+        "type": "AzureBlobFS",
+        "typeProperties": {
+          "url": "[parameters('adlsUrl')]"
+        }
+      },
+      "dependsOn": []
+    },
+    {
+      "name": "[concat(parameters('factoryName'), '/ds_payments_exam_raw')]",
+      "type": "Microsoft.DataFactory/factories/datasets",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "linkedServiceName": {
+          "referenceName": "ls_adls_payments_exam",
+          "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "Binary",
+        "typeProperties": {
+          "location": {
+            "type": "AzureBlobFSLocation",
+            "folderPath": "payments_exam",
+            "fileSystem": "raw"
+          }
+        }
+      },
+      "dependsOn": [
+        "[concat(variables('factoryId'), '/linkedServices/ls_adls_payments_exam')]"
+      ]
+    },
+    {
+      "name": "[concat(parameters('factoryName'), '/ds_payments_exam_bronze')]",
+      "type": "Microsoft.DataFactory/factories/datasets",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "linkedServiceName": {
+          "referenceName": "ls_adls_payments_exam",
+          "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "Binary",
+        "typeProperties": {
+          "location": {
+            "type": "AzureBlobFSLocation",
+            "folderPath": "payments_exam",
+            "fileSystem": "bronze"
+          }
+        }
+      },
+      "dependsOn": [
+        "[concat(variables('factoryId'), '/linkedServices/ls_adls_payments_exam')]"
+      ]
+    },
+    {
+      "name": "[concat(parameters('factoryName'), '/ls_databricks_payments_exam')]",
+      "type": "Microsoft.DataFactory/factories/linkedServices",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "annotations": [],
+        "type": "AzureDatabricks",
+        "typeProperties": {
+          "domain": "[parameters('databricksDomain')]",
+          "authentication": "MSI",
+          "workspaceResourceId": "[parameters('databricksWorkspaceResourceId')]"
+        }
+      },
+      "dependsOn": []
+    },
+    {
+      "name": "[concat(parameters('factoryName'), '/pl_payments_exam')]",
+      "type": "Microsoft.DataFactory/factories/pipelines",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "activities": [
+          {
+            "name": "gm_payments_exam",
+            "type": "GetMetadata",
+            "dependsOn": [],
+            "policy": {
+              "timeout": "0.12:00:00",
+              "retry": 0,
+              "retryIntervalInSeconds": 30,
+              "secureOutput": false,
+              "secureInput": false
+            },
+            "userProperties": [],
+            "typeProperties": {
+              "dataset": {
+                "referenceName": "ds_payments_exam_raw",
+                "type": "DatasetReference",
+                "parameters": {}
+              },
+              "fieldList": [
+                "childItems"
+              ],
+              "storeSettings": {
+                "type": "AzureBlobFSReadSettings",
+                "recursive": true,
+                "enablePartitionDiscovery": false
+              },
+              "formatSettings": {
+                "type": "BinaryReadSettings"
+              }
+            }
+          },
+          {
+            "name": "filter_payments_exam",
+            "type": "Filter",
+            "dependsOn": [
+              {
+                "activity": "gm_payments_exam",
+                "dependencyConditions": [
+                  "Succeeded"
+                ]
+              }
+            ],
+            "userProperties": [],
+            "typeProperties": {
+              "items": {
+                "value": "@activity('gm_payments_exam').output.childItems",
+                "type": "Expression"
+              },
+              "condition": {
+                "value": "@endsWith(item().name, '.csv')",
+                "type": "Expression"
+              }
+            }
+          },
+          {
+            "name": "fe_payments_exam",
+            "type": "ForEach",
+            "dependsOn": [
+              {
+                "activity": "filter_payments_exam",
+                "dependencyConditions": [
+                  "Succeeded"
+                ]
+              }
+            ],
+            "userProperties": [],
+            "typeProperties": {
+              "items": {
+                "value": "@activity('filter_payments_exam').output.value",
+                "type": "Expression"
+              },
+              "activities": [
+                {
+                  "name": "cd_payments_exam_raw_bronze",
+                  "type": "Copy",
+                  "dependsOn": [],
+                  "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                  },
+                  "userProperties": [],
+                  "typeProperties": {
+                    "source": {
+                      "type": "BinarySource",
+                      "storeSettings": {
+                        "type": "AzureBlobFSReadSettings",
+                        "recursive": false,
+                        "wildcardFolderPath": "payments_exam",
+                        "wildcardFileName": {
+                          "value": "@item().name",
+                          "type": "Expression"
+                        },
+                        "deleteFilesAfterCompletion": false
+                      },
+                      "formatSettings": {
+                        "type": "BinaryReadSettings"
+                      }
+                    },
+                    "sink": {
+                      "type": "BinarySink",
+                      "storeSettings": {
+                        "type": "AzureBlobFSWriteSettings",
+                        "copyBehavior": "PreserveHierarchy"
+                      }
+                    },
+                    "enableStaging": false
+                  },
+                  "inputs": [
+                    {
+                      "referenceName": "ds_payments_exam_raw",
+                      "type": "DatasetReference",
+                      "parameters": {}
+                    }
+                  ],
+                  "outputs": [
+                    {
+                      "referenceName": "ds_payments_exam_bronze",
+                      "type": "DatasetReference",
+                      "parameters": {}
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "name": "db_payments_exam",
+            "type": "DatabricksJob",
+            "dependsOn": [
+              {
+                "activity": "fe_payments_exam",
+                "dependencyConditions": [
+                  "Succeeded"
+                ]
+              }
+            ],
+            "policy": {
+              "timeout": "0.00:15:00",
+              "retry": 0,
+              "retryIntervalInSeconds": 30,
+              "secureOutput": false,
+              "secureInput": false
+            },
+            "userProperties": [],
+            "typeProperties": {
+              "jobId": "[parameters('databricksJobId')]"
+            },
+            "linkedServiceName": {
+              "referenceName": "ls_databricks_payments_exam",
+              "type": "LinkedServiceReference"
+            }
+          }
+        ],
+        "policy": {
+          "elapsedTimeMetric": {}
+        },
+        "annotations": []
+      },
+      "dependsOn": [
+        "[concat(variables('factoryId'), '/datasets/ds_payments_exam_raw')]",
+        "[concat(variables('factoryId'), '/linkedServices/ls_databricks_payments_exam')]",
+        "[concat(variables('factoryId'), '/datasets/ds_payments_exam_bronze')]"
+      ]
+    }
+  ]
+}
